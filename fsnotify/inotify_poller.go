@@ -2,6 +2,8 @@ package fsnotify
 
 import "errors"
 
+import "golang.org/x/sys/unix"
+
 type fdPoller struct {
 	fd   int
 	epfd int
@@ -112,5 +114,41 @@ func (poller *fdPoller) wait() (bool, error) {
 			return true, nil
 		}
 		return false, nil
+	}
+}
+
+func (poller *fdPoller) wake() error {
+	buf := make([]byte, 1)
+	n, errno := unix.Write(poller.pipe[1], buf)
+	if n == -1 {
+		if errno == unix.EAGAIN {
+			return nil
+		}
+		return errno
+	}
+	return nil
+}
+
+func (poller *fdPoller) clearWake() error {
+	buf := make([]byte, 100)
+	n, errno := unix.Read(poller.pipe[0], buf)
+	if n == -1 {
+		if errno == unix.EAGAIN {
+			return nil
+		}
+		return errno
+	}
+	return nil
+}
+
+func (poller *fdPoller) close() {
+	if poller.pipe[1] == -1 {
+		unix.Close(poller.pipe[1])
+	}
+	if poller.pipe[0] == -1 {
+		unix.Close(poller.pipe[0])
+	}
+	if poller.epfd != -1 {
+		unix.Close(poller.epfd)
 	}
 }
